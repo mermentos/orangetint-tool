@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Before/After Preview - SORA Image Tint Corrector</title>
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+        .comparison-container {
+            border-radius: 0.5rem;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        
+        .comparison-row {
+            display: flex;
+            height: 70vh;
+            min-height: 500px;
+        }
+        
+        .image-panel {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(45deg, #1a1a1a 25%, transparent 25%), 
+                        linear-gradient(-45deg, #1a1a1a 25%, transparent 25%), 
+                        linear-gradient(45deg, transparent 75%, #1a1a1a 75%), 
+                        linear-gradient(-45deg, transparent 75%, #1a1a1a 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+        
+        .image-panel:first-child {
+            border-right: 2px solid var(--bs-border-color);
+        }
+        
+        .image-viewport {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+        
+        .image-viewport:active {
+            cursor: grabbing;
+        }
+        
+        .comparison-image {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform-origin: center center;
+            max-width: none;
+            max-height: none;
+            transition: transform 0.1s ease-out;
+            user-select: none;
+            pointer-events: none;
+        }
+        
+        .image-label {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+        
+        .image-label.before {
+            background: rgba(220, 53, 69, 0.9);
+        }
+        
+        .image-label.after {
+            background: rgba(25, 135, 84, 0.9);
+        }
+        
+        .zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 15;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .zoom-btn {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.8);
+            border: none;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            font-size: 16px;
+            transition: all 0.2s ease;
+        }
+        
+        .zoom-btn:hover {
+            background: rgba(0, 0, 0, 0.9);
+            transform: scale(1.1);
+        }
+        
+        .zoom-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            backdrop-filter: blur(10px);
+            z-index: 15;
+        }
+        
+        .sync-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(13, 110, 253, 0.9);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 25px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+        
+        .sync-indicator.show {
+            opacity: 1;
+        }
+        
+        @media (max-width: 768px) {
+            .comparison-row {
+                flex-direction: column;
+                height: auto;
+                min-height: 600px;
+            }
+            
+            .image-panel {
+                height: 300px;
+            }
+            
+            .image-panel:first-child {
+                border-right: none;
+                border-bottom: 2px solid var(--bs-border-color);
+            }
+            
+            .zoom-controls {
+                bottom: 15px;
+                right: 15px;
+                gap: 8px;
+            }
+            
+            .zoom-btn {
+                width: 40px;
+                height: 40px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item">
+                            <a href="{{ url_for('index') }}" class="text-decoration-none">
+                                <i class="fas fa-home me-1"></i>Home
+                            </a>
+                        </li>
+                        <li class="breadcrumb-item active">Before/After Preview</li>
+                    </ol>
+                </nav>
+                <h1 class="display-6 mb-3">
+                    <i class="fas fa-eye text-info me-3"></i>
+                    Before/After Comparison
+                </h1>
+                <p class="text-muted">Side-by-side comparison with synchronized zooming and panning</p>
+            </div>
+        </div>
+
+        <!-- Comparison Container -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-body p-0">
+                        <div class="comparison-container">
+                            <div class="comparison-row">
+                                <!-- Original Image Panel -->
+                                <div class="image-panel">
+                                    <div class="image-viewport" id="originalViewport">
+                                        <img src="{{ url_for('serve_image', folder='uploads', filename=original_filename) }}" 
+                                             alt="Original Image" 
+                                             class="comparison-image" 
+                                             id="originalImage">
+                                    </div>
+                                    <div class="image-label before">
+                                        <i class="fas fa-circle me-2"></i>Original
+                                    </div>
+                                </div>
+                                
+                                <!-- Processed Image Panel -->  
+                                <div class="image-panel">
+                                    <div class="image-viewport" id="processedViewport">
+                                        <img src="{{ url_for('serve_image', folder='output', filename=processed_filename) }}" 
+                                             alt="Processed Image" 
+                                             class="comparison-image" 
+                                             id="processedImage">
+                                    </div>
+                                    <div class="image-label after">
+                                        <i class="fas fa-circle me-2"></i>Corrected
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Zoom Controls -->
+                            <div class="zoom-controls">
+                                <button class="zoom-btn" id="zoomOut" title="Zoom Out">
+                                    <i class="fas fa-minus"></i>
+                                </button>
+                                <button class="zoom-btn" id="resetZoom" title="Reset Zoom">
+                                    <i class="fas fa-expand-arrows-alt"></i>
+                                </button>
+                                <button class="zoom-btn" id="zoomIn" title="Zoom In">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                            
+                            <!-- Zoom Info -->
+                            <div class="zoom-info" id="zoomInfo">
+                                Zoom: 100%
+                            </div>
+                            
+                            <!-- Sync Indicator -->
+                            <div class="sync-indicator" id="syncIndicator">
+                                <i class="fas fa-link me-2"></i>Views Synchronized
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Details -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card border-0 h-100">
+                    <div class="card-body">
+                        <h6 class="card-title text-danger">
+                            <i class="fas fa-image me-2"></i>Original Image
+                        </h6>
+                        <p class="card-text text-muted small mb-0">{{ original_filename.split('_', 1)[-1] if '_' in original_filename else original_filename }}</p>
+                        <p class="text-muted small">Contains orange tint from SORA generation</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card border-0 h-100">
+                    <div class="card-body">
+                        <h6 class="card-title text-success">
+                            <i class="fas fa-magic me-2"></i>Corrected Image
+                        </h6>
+                        <p class="card-text text-muted small mb-0">{{ processed_filename }}</p>
+                        <p class="text-muted small">Orange tint removed using LAB color space correction</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="row">
+            <div class="col-12 text-center">
+                <div class="btn-group mb-3" role="group">
+                    <a href="{{ url_for('download_file', filename=processed_filename) }}" 
+                       class="btn btn-success">
+                        <i class="fas fa-download me-2"></i>
+                        Download Corrected Image
+                    </a>
+                    <button type="button" class="btn btn-outline-secondary" onclick="toggleFullscreen()">
+                        <i class="fas fa-expand me-2"></i>
+                        Fullscreen
+                    </button>
+                </div>
+                
+                <div class="d-block">
+                    <a href="{{ url_for('index') }}" class="btn btn-outline-primary me-2">
+                        <i class="fas fa-arrow-left me-2"></i>
+                        Back to Upload
+                    </a>
+                    <button type="button" class="btn btn-outline-info" onclick="shareComparison()">
+                        <i class="fas fa-share me-2"></i>
+                        Share Preview
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="alert alert-info border-0" role="alert">
+                    <h6 class="alert-heading">
+                        <i class="fas fa-info-circle me-2"></i>
+                        How to Use the Comparison Tool
+                    </h6>
+                    <hr>
+                    <ul class="mb-0 small">
+                        <li><strong>Pan images:</strong> Click and drag within either image to move around</li>
+                        <li><strong>Zoom controls:</strong> Use the buttons in the bottom-right to zoom in/out</li>
+                        <li><strong>Synchronized view:</strong> Both images zoom and pan together automatically</li>
+                        <li><strong>Keyboard shortcuts:</strong> +/- to zoom, arrow keys to pan</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const originalViewport = document.getElementById('originalViewport');
+            const processedViewport = document.getElementById('processedViewport');
+            const originalImage = document.getElementById('originalImage');
+            const processedImage = document.getElementById('processedImage');
+            const zoomInfo = document.getElementById('zoomInfo');
+            const syncIndicator = document.getElementById('syncIndicator');
+            
+            let currentZoom = 1;
+            let isDragging = false;
+            let lastPanX = 0;
+            let lastPanY = 0;
+            let panX = 0;
+            let panY = 0;
+            
+            // Initialize images
+            function initializeImages() {
+                const containerRect = originalViewport.getBoundingClientRect();
+                
+                // Wait for images to load
+                Promise.all([
+                    new Promise(resolve => {
+                        if (originalImage.complete) resolve();
+                        else originalImage.onload = resolve;
+                    }),
+                    new Promise(resolve => {
+                        if (processedImage.complete) resolve();
+                        else processedImage.onload = resolve;
+                    })
+                ]).then(() => {
+                    resetView();
+                });
+            }
+            
+            function resetView() {
+                // Calculate zoom to fit image in viewport
+                const viewportRect = originalViewport.getBoundingClientRect();
+                const imgRect = originalImage.getBoundingClientRect();
+                
+                if (imgRect.width > 0 && imgRect.height > 0) {
+                    const scaleX = (viewportRect.width * 0.9) / originalImage.naturalWidth;
+                    const scaleY = (viewportRect.height * 0.9) / originalImage.naturalHeight;
+                    currentZoom = Math.min(scaleX, scaleY, 1); // Don't zoom in beyond 100%
+                } else {
+                    currentZoom = 1;
+                }
+                
+                panX = 0;
+                panY = 0;
+                updateImageTransforms();
+            }
+            
+            function updateImageTransforms() {
+                const transform = `translate(calc(-50% + ${panX}px), calc(-50% + ${panY}px)) scale(${currentZoom})`;
+                originalImage.style.transform = transform;
+                processedImage.style.transform = transform;
+                
+                // Update zoom info
+                zoomInfo.textContent = `Zoom: ${Math.round(currentZoom * 100)}%`;
+                
+                // Show sync indicator briefly
+                showSyncIndicator();
+            }
+            
+            function showSyncIndicator() {
+                syncIndicator.classList.add('show');
+                setTimeout(() => {
+                    syncIndicator.classList.remove('show');
+                }, 1000);
+            }
+            
+            // Zoom functionality
+            function zoomIn() {
+                currentZoom = Math.min(currentZoom * 1.3, 5);
+                updateImageTransforms();
+            }
+            
+            function zoomOut() {
+                currentZoom = Math.max(currentZoom / 1.3, 0.1);
+                updateImageTransforms();
+            }
+            
+            // Pan functionality
+            function startPan(e) {
+                isDragging = true;
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                lastPanX = clientX - panX;
+                lastPanY = clientY - panY;
+                
+                originalViewport.style.cursor = 'grabbing';
+                processedViewport.style.cursor = 'grabbing';
+                e.preventDefault();
+            }
+            
+            function updatePan(e) {
+                if (!isDragging) return;
+                
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                panX = clientX - lastPanX;
+                panY = clientY - lastPanY;
+                
+                updateImageTransforms();
+                e.preventDefault();
+            }
+            
+            function endPan() {
+                isDragging = false;
+                originalViewport.style.cursor = 'grab';
+                processedViewport.style.cursor = 'grab';
+            }
+            
+            // Event listeners for both viewports
+            [originalViewport, processedViewport].forEach(viewport => {
+                // Mouse events
+                viewport.addEventListener('mousedown', startPan);
+                viewport.addEventListener('mousemove', updatePan);
+                viewport.addEventListener('mouseup', endPan);
+                viewport.addEventListener('mouseleave', endPan);
+                
+                // Touch events
+                viewport.addEventListener('touchstart', startPan, { passive: false });
+                viewport.addEventListener('touchmove', updatePan, { passive: false });
+                viewport.addEventListener('touchend', endPan);
+                
+                // Wheel zoom
+                viewport.addEventListener('wheel', function(e) {
+                    e.preventDefault();
+                    if (e.deltaY < 0) {
+                        zoomIn();
+                    } else {
+                        zoomOut();
+                    }
+                });
+            });
+            
+            // Zoom controls
+            document.getElementById('zoomIn').addEventListener('click', zoomIn);
+            document.getElementById('zoomOut').addEventListener('click', zoomOut);
+            document.getElementById('resetZoom').addEventListener('click', resetView);
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                const panStep = 20;
+                
+                switch(e.key) {
+                    case 'ArrowLeft':
+                        panX += panStep;
+                        updateImageTransforms();
+                        e.preventDefault();
+                        break;
+                    case 'ArrowRight':
+                        panX -= panStep;
+                        updateImageTransforms();
+                        e.preventDefault();
+                        break;
+                    case 'ArrowUp':
+                        panY += panStep;
+                        updateImageTransforms();
+                        e.preventDefault();
+                        break;
+                    case 'ArrowDown':
+                        panY -= panStep;
+                        updateImageTransforms();
+                        e.preventDefault();
+                        break;
+                    case '+':
+                    case '=':
+                        zoomIn();
+                        e.preventDefault();
+                        break;
+                    case '-':
+                        zoomOut();
+                        e.preventDefault();
+                        break;
+                    case '0':
+                        resetView();
+                        e.preventDefault();
+                        break;
+                }
+            });
+            
+            // Handle window resize
+            window.addEventListener('resize', resetView);
+            
+            // Initialize
+            initializeImages();
+        });
+        
+        function toggleFullscreen() {
+            const container = document.querySelector('.comparison-container');
+            
+            if (!document.fullscreenElement) {
+                container.requestFullscreen().then(() => {
+                    container.style.height = '100vh';
+                }).catch(err => {
+                    console.log('Fullscreen failed:', err);
+                });
+            } else {
+                document.exitFullscreen().then(() => {
+                    container.style.height = '';
+                });
+            }
+        }
+        
+        function shareComparison() {
+            if (navigator.share) {
+                navigator.share({
+                    title: 'SORA Image Tint Correction - Before/After',
+                    text: 'Check out this before/after comparison of orange tint removal from a SORA-generated image!',
+                    url: window.location.href
+                });
+            } else {
+                // Fallback: copy URL to clipboard
+                navigator.clipboard.writeText(window.location.href).then(() => {
+                    alert('Preview URL copied to clipboard!');
+                });
+            }
+        }
+    </script>
+</body>
+</html>
